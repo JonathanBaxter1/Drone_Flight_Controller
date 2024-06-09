@@ -1,6 +1,6 @@
 ; This program is not finished!
 ; To-do:
-; 1 - Make calculatePID function (P = .04, I = .0001, D = .015) P = -64->63, I = -32->31, D = -32->31
+; 1 - Finish calculatePID function (P = .04, I = .0001, D = .015) P = -64->63, I = -32->31, D = -32->31
 
 ; This program uses a PID controller to stabilize a quadcoptor on one axis.
 ; A complementary filter is used on the IMU accelerometer and gyro.
