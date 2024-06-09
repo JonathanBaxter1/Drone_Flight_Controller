@@ -74,9 +74,9 @@ mainLoop: ; total = 8613cc + 7997cc delay = 16610 = 481 Hz
 	
 	; Increase loopCounter once per frame until it reaches 65,535
 	; Then it stays at 65,535
-	ld de,$0001							;	if (loopCounter < 65,535) {
-	ld hl,(loopCounter)				;		loopCounter++
-	add hl,de									;	}
+	ld de,$0001				;	if (loopCounter < 65,535) {
+	ld hl,(loopCounter)			;		loopCounter++
+	add hl,de				;	}
 	jp c, loopCounterAtMax
 	ld hl,(loopCounter)
 	inc hl
@@ -85,18 +85,18 @@ loopCounterAtMax:
 
 	; Find what test segment we're currently in
 	ld hl,(loopCounter)
-	ld de,-segment4Start				;	if (loopCounter > segment4Start) {
-	add hl,de									;		goto setThrottle0
-	jp c, setThrottle0					;	}
-	ld hl,(loopCounter)				;	else if (loopCounter > segment3Start) {
-	ld de,-segment3Start				;		goto setThrottleBalance
-	add hl,de									;	}
-	jp c, setThrottleBalance			;	else if  (loopCounter > segment2Start) {
-	ld hl,(loopCounter)				;		goto setThrottle0
-	ld de,-segment2Start				;	}
-	add hl,de									;	else {
-	jp c, setThrottle0					;		goto setThrottle100
-	jp setThrottle100					;	}
+	ld de,-segment4Start			;	if (loopCounter > segment4Start) {
+	add hl,de				;		goto setThrottle0
+	jp c, setThrottle0			;	}
+	ld hl,(loopCounter)			;	else if (loopCounter > segment3Start) {
+	ld de,-segment3Start			;		goto setThrottleBalance
+	add hl,de				;	}
+	jp c, setThrottleBalance		;	else if  (loopCounter > segment2Start) {
+	ld hl,(loopCounter)			;		goto setThrottle0
+	ld de,-segment2Start			;	}
+	add hl,de				;	else {
+	jp c, setThrottle0			;		goto setThrottle100
+	jp setThrottle100			;	}
 	
 	; Set all 4 motors to min throttle (cuts motors off)
 setThrottle0:
@@ -111,7 +111,7 @@ setThrottle0:
 setThrottleBalance: ; motors may be swapped
 	call getSensorData
 	call calculateOrientation
-	ex de,hl								;	rollError = rollReference - rollAngle
+	ex de,hl				;	rollError = rollReference - rollAngle
 	ld hl,(rollReference)
 	and a ; reset carry flag
 	sbc hl,de
@@ -357,7 +357,7 @@ calculateOrientation:
 	; of 1 degree/sec rotation returns a roll angle value of 256. Since the gyro roll angle estimation
 	; (rollAngleGyro) is a 16 bit signed int, it can store an angle from ~ -128 to 128 degrees.
 	ld hl, (rollAngle)
-	ld a,e										;	rollAngleGyro = rollAngle + xGyro
+	ld a,e					;	rollAngleGyro = rollAngle + xGyro
 	add a,a
 	sbc a,a		; sign extend e into de, then add de to hl
 	ld d,a
@@ -376,11 +376,11 @@ calculateOrientation:
 	
 	; First, hl*5 is loaded into the 24 bit register group "cde"
 	push bc	; save Y acceleration
-	ld bc, 0									;	if (hl >= 0) {	// This is necessary to make the operation work with negative roll angles
-	bit 7,h										;		bc = $0000
-	jp z, HLpositive						;	else {
-	dec bc										;		bc = $FFFF
-HLpositive:									;	}
+	ld bc, 0				;	if (hl >= 0) {	// This is necessary to make the operation work with negative roll angles
+	bit 7,h					;		bc = $0000
+	jp z, HLpositive			;	else {
+	dec bc					;		bc = $FFFF
+HLpositive:					;	}
 	ld d,h		; load hl into cde, then left bitshift twice to multiply by 4
 	ld e,l
 	sla e		; bitshift 1
@@ -536,10 +536,6 @@ rollAngle:
 	.dw 0
 rollDerivativeSum:
 	.dw 0
-
-;import math
-;for i in range(0, 257):
-;    print(".dw $"+format(round(math.asin(i/256)*14667.7196*(5/256)),'#06x')[2:].upper())
     
 asinTable:
 	.dw $0000
@@ -822,3 +818,7 @@ RAMend:
 ;    isum += math.floor(out/2) # use sra to sign extend out/2 from 15 to 16 bits
 ;    #print(out*0.0654499341)
 ;    print(out)
+
+;import math
+;for i in range(0, 257):
+;    print(".dw $"+format(round(math.asin(i/256)*14667.7196*(5/256)),'#06x')[2:].upper())
