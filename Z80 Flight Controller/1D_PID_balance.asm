@@ -1,6 +1,7 @@
 ; This program is not finished!
 ; To-do:
-; 1 - Finish calculatePID function (P = .04, I = .0001, D = .015) P = -64->63, I = -32->31, D = -32->31
+; 1 - Make P and I gain tables
+; 2 - Organize code, comment, and double check everything
 
 ; This program uses a PID controller to stabilize a quadcoptor on one axis.
 ; A complementary filter is used on the IMU accelerometer and gyro.
@@ -24,6 +25,7 @@
 	#define nops247 nops64 \ nops64 \ nops64 \ nops55
 	#define nops257 nops64 \ nops64 \ nops64 \ nops64 \ nop
 	#define delay988cc ld b,75 \ djnz $-0 \ ld b,0 \ nop
+	#define delay3330cc ld b,0 \ djnz $-0
 	
 	;  ---------- Constants ----------
 	#define loopFreq 500 ; Hz
@@ -32,6 +34,7 @@
 	#define testLength 10 ; seconds
 	#define loopDelay 520 ; x 13 cc
 	#define hoverThrottle 66 ; 66/255
+	#define throttleLimit hoverThrottle+16+12+9+5 ; 108/255, ~42% Throttle
 	
 	; IMU Addresses
 	#define yAccAddress $3D
@@ -116,14 +119,15 @@ setThrottleBalance: ; motors may be swapped
 	and a ; reset carry flag
 	sbc hl,de
 	call calculatePID
-;	ld a,(rollCommand)
 	ld e, hoverThrottle
 	add a,e
+	call checkThrottleLimit
 	ld (motor1Throttle),a			;	motor1Throttle = hoverThrottle + rollCommand
 	ld (motor2Throttle),a			;	motor2Throttle = hoverThrottle + rollCommand
 	sub e
 	neg
 	add a,e
+	call checkThrottleLimit
 	ld (motor3Throttle),a			;	motor3Throttle = hoverThrottle - rollCommand
 	ld (motor4Throttle),a			;	motor4Throttle = hoverThrottle - rollCommand
 	jp endSetThrottle
@@ -247,10 +251,10 @@ Oneshot4:
 ; Get accelerometer and gyro data from MPU-9250.
 
 ; Registers:
+; BC		= Y acceleration (output)
+; E		= X angular rate (output)
 ; A, F, D	= Destroyed
-; H, L			= Unaffected
-; BC				= Y acceleration (output)
-; E				= X angular rate (output)
+; H, L		= Unaffected
 getSensorData:
 	ld d,xGyroAddress + $80 ; bit 7 of IMU address means we're reading
 	call readDataSPI8Bit
@@ -268,10 +272,10 @@ getSensorData:
 ; Reads 8 bits of data from an SPI device.
 
 ; Registers:
-; D				= address (input)
-; A, F, B		= Destroyed
-; E, H, L		= Unaffected
-; C				= data (output)
+; D		= Address (input)
+; C		= Data (output)
+; A, F, B	= Destroyed
+; E, H, L	= Unaffected
 readDataSPI8Bit:
 	; Output: bit 3 = SCL, bit 2 = MOSI, bit 1 = NCS, bit 0 = MISO
 	ld a,$0A
@@ -309,10 +313,10 @@ receiveLoop: ; Value read is stored in register c
 ; already been set and the first 8 bits retrieved.
 
 ; Registers:
-; A, F			= Destroyed
+; BC		= data (output)
+; A, F		= Destroyed
 ; D, E, H, L	= Unaffected
-; BC				= data (output)
-
+readDataSPI2Bit:
 	xor a
 	ld b,a
 	out (0),a ; SCL = 0, MOSI = 0, NCS = 0, MISO = input
@@ -338,10 +342,10 @@ receiveLoop: ; Value read is stored in register c
 ; the roll angle of the drone
 
 ; Registers:
-; A, F, D		= Destroyed
-; BC				= Y acceleration (input)
-; E				= X angular rate (input)
-; HL				= Roll Angle (output)
+; BC		= Y acceleration (input)
+; E		= X angular rate (input)
+; HL		= Roll Angle (output)
+; A, F, D	= Destroyed
 calculateOrientation:
 	; I used a complementary filter for the gyroscope and accelerometer modeled after the one
 	; in this video by Brian Douglas: https://www.youtube.com/watch?v=whSw42XddsU
@@ -473,20 +477,53 @@ addRollEstimates:
 ; as an input. A low pass filter is used on the derivative term.
 
 ; Registers:
-; HL				= Roll Error (input)
-; A				= Roll Command (output)
+; HL		= Roll Error (input)
+; A		= Roll Command (output)
 
-	; ----- Calculate P term -----
+	; ----- Calculate P term ----- (Max value ~= 16)
 	ex de,hl
 	ld hl,PgainTable
 	ld b,0
 	ld c,d
 	add hl,bc
 	ld a,(hl)
-;save a
+	ld ixl,a
 
-	; ----- Calculate I term -----
-	; ----- Calculate D term -----
+	; ----- Calculate I term ----- (Max value ~= 12)
+	; *8.936524169905225e-5, max output value ~= 11.7, dont change de so D will work
+	; integral must not change more than 65536 in a single frame for this function to work. This shouldn't be a problem
+	; since only an 8 bit value is added each frame.
+	ld hl,(rollIntegralLow2Bytes)
+	ld a,(rollIntegralHighByte)
+	add hl,bc
+	adc a,b ; just adds carry flag to a since b is 0
+	cp $FD
+	jp z,rollIntMaxNegative
+	cp $02
+	jp z,rollIntMaxPositive
+	jp rollIntInRange
+rollIntMaxNegative:
+	ld a,$FE
+rollIntMaxPositive:
+	ld hl,0
+rollIntInRange:
+	ld (rollIntegralLow2Bytes),hl
+	ld (rollIntegralHighByte),a
+	sra a
+	rr h
+	sra a
+	rr h
+	sra a
+	rr h
+	ld c,h
+	ld hl,IgainTable
+	add hl,bc
+	ld a,(hl)
+	ld b,ixl
+	add a,b
+	ld b,a
+	
+	; ----- Calculate D term ----- (Max value ~= 9)
 ; max initial value = ~575 if drone is 90 degrees at start and max gyro rate, about 3 rotations per second
 ; divide by ~7.6 I think, so max D value after gain is ~75
 ; if max value is limited to 236, max D value after gain is ~31
@@ -518,12 +555,56 @@ rollDerivInRange:
 	ld hl, DgainTable
 	add hl,de
 	ld a,(hl)
-	; then add a to saved a and integral result
+	add a,b
 	
-
-	ld a,0 ; temporary
 	ret
 
+
+; ---------- Check Throttle Limit ----------
+; If the throttle exceeds the specified limit, the throttle signals to the
+; ESCs will be cut off (constant LOW state). According to the ESC documentation
+; at https://www.lemonfpv.com/h-pd-298.html, after 0.32 seconds the ESCs will
+; cut off power to the motors. The "Handle Error" function is called which
+; stops the program and flashes the LED.
+
+; Registers:
+; A		= Throttle (input)
+; All Others	= Unaffected
+
+checkThrottleLimit:
+	cp throttleLimit
+	call nc, handleError
+	ret
+
+
+; ---------- Handle Error ----------
+; If an error in the program is found, the program will stop, and the
+; LED will flash indicating the user to unplug the power from the Z80
+; and plug it back in.
+
+; Registers:
+; Doesn't really matter since the program gets stuck in this loop forever
+
+handleError:
+	ld a,$01
+	out (0),a ; Set LED to HIGH
+	ld de,1192 ; Delay 500 ms
+errorLoop1:
+delay3330cc
+	dec de
+	ld a,d
+	or e
+	jp nz,errorLoop1
+	xor a
+	out (0),a ; Set LED to LOW
+	ld de,1192 ; Delay 500 ms
+errorLoop2:
+delay3330cc
+	dec de
+	ld a,d
+	or e
+	jp nz,errorLoop2
+	jp handleError
 
 
 ; ------------------------- Variables -------------------------
@@ -534,6 +615,10 @@ rollReference:
 	.dw 0
 rollAngle:
 	.dw 0
+rollIntegralLow2Bytes:
+	.dw 0
+rollIntegralHighByte:
+	.db 0
 rollDerivativeSum:
 	.dw 0
     
