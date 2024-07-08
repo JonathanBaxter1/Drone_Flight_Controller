@@ -1,7 +1,6 @@
 ; This program is not finished!
 ; To-do:
-; 1 - Make P and I gain tables
-; 2 - Organize code, comment, and double check everything
+; 1 - Organize code, comment, and double check everything
 
 ; This program uses a PID controller to stabilize a quadcoptor on one axis.
 ; A complementary filter is used on the IMU accelerometer and gyro.
@@ -77,9 +76,9 @@ mainLoop: ; total = 8613cc + 7997cc delay = 16610 = 481 Hz
 	
 	; Increase loopCounter once per frame until it reaches 65,535
 	; Then it stays at 65,535
-	ld de,$0001				;	if (loopCounter < 65,535) {
+	ld de,$0001					;	if (loopCounter < 65,535) {
 	ld hl,(loopCounter)			;		loopCounter++
-	add hl,de				;	}
+	add hl,de					;	}
 	jp c, loopCounterAtMax
 	ld hl,(loopCounter)
 	inc hl
@@ -88,16 +87,16 @@ loopCounterAtMax:
 
 	; Find what test segment we're currently in
 	ld hl,(loopCounter)
-	ld de,-segment4Start			;	if (loopCounter > segment4Start) {
-	add hl,de				;		goto setThrottle0
+	ld de,-segment4Start		;	if (loopCounter > segment4Start) {
+	add hl,de					;		goto setThrottle0
 	jp c, setThrottle0			;	}
 	ld hl,(loopCounter)			;	else if (loopCounter > segment3Start) {
-	ld de,-segment3Start			;		goto setThrottleBalance
-	add hl,de				;	}
-	jp c, setThrottleBalance		;	else if  (loopCounter > segment2Start) {
+	ld de,-segment3Start		;		goto setThrottleBalance
+	add hl,de					;	}
+	jp c, setThrottleBalance	;	else if  (loopCounter > segment2Start) {
 	ld hl,(loopCounter)			;		goto setThrottle0
-	ld de,-segment2Start			;	}
-	add hl,de				;	else {
+	ld de,-segment2Start		;	}
+	add hl,de					;	else {
 	jp c, setThrottle0			;		goto setThrottle100
 	jp setThrottle100			;	}
 	
@@ -114,7 +113,7 @@ setThrottle0:
 setThrottleBalance: ; motors may be swapped
 	call getSensorData
 	call calculateOrientation
-	ex de,hl				;	rollError = rollReference - rollAngle
+	ex de,hl					;	rollError = rollReference - rollAngle
 	ld hl,(rollReference)
 	and a ; reset carry flag
 	sbc hl,de
@@ -122,14 +121,14 @@ setThrottleBalance: ; motors may be swapped
 	ld e, hoverThrottle
 	add a,e
 	call checkThrottleLimit
-	ld (motor1Throttle),a			;	motor1Throttle = hoverThrottle + rollCommand
-	ld (motor2Throttle),a			;	motor2Throttle = hoverThrottle + rollCommand
+	ld (motor1Throttle),a		;	motor1Throttle = hoverThrottle + rollCommand
+	ld (motor2Throttle),a		;	motor2Throttle = hoverThrottle + rollCommand
 	sub e
 	neg
 	add a,e
 	call checkThrottleLimit
-	ld (motor3Throttle),a			;	motor3Throttle = hoverThrottle - rollCommand
-	ld (motor4Throttle),a			;	motor4Throttle = hoverThrottle - rollCommand
+	ld (motor3Throttle),a		;	motor3Throttle = hoverThrottle - rollCommand
+	ld (motor4Throttle),a		;	motor4Throttle = hoverThrottle - rollCommand
 	jp endSetThrottle
 
 	; Set all 4 motors to max throttle (used in ESC calibration)
@@ -380,11 +379,11 @@ calculateOrientation:
 	
 	; First, hl*5 is loaded into the 24 bit register group "cde"
 	push bc	; save Y acceleration
-	ld bc, 0				;	if (hl >= 0) {	// This is necessary to make the operation work with negative roll angles
-	bit 7,h					;		bc = $0000
+	ld bc, 0					;	if (hl >= 0) {	// This is necessary to make the operation work with negative roll angles
+	bit 7,h						;		bc = $0000
 	jp z, HLpositive			;	else {
-	dec bc					;		bc = $FFFF
-HLpositive:					;	}
+	dec bc						;		bc = $FFFF
+HLpositive:						;	}
 	ld d,h		; load hl into cde, then left bitshift twice to multiply by 4
 	ld e,l
 	sla e		; bitshift 1
@@ -481,6 +480,8 @@ addRollEstimates:
 ; A		= Roll Command (output)
 
 	; ----- Calculate P term ----- (Max value ~= 16)
+	; P = .04, Max value = 10*pi/2, -90 to 90
+	; *0.17454148769
 	ex de,hl
 	ld hl,PgainTable
 	ld b,0
@@ -490,7 +491,9 @@ addRollEstimates:
 	ld ixl,a
 
 	; ----- Calculate I term ----- (Max value ~= 12)
-	; *8.936524169905225e-5, max output value ~= 11.7, dont change de so D will work
+	; I = .01, -128 to 127, Max value ~= 11.4
+	; *0.0893652414
+	; dont change de so D will work
 	; integral must not change more than 65536 in a single frame for this function to work. This shouldn't be a problem
 	; since only an 8 bit value is added each frame.
 	ld hl,(rollIntegralLow2Bytes)
@@ -523,10 +526,10 @@ rollIntInRange:
 	add a,b
 	ld b,a
 	
-	; ----- Calculate D term ----- (Max value ~= 9)
-; max initial value = ~575 if drone is 90 degrees at start and max gyro rate, about 3 rotations per second
-; divide by ~7.6 I think, so max D value after gain is ~75
-; if max value is limited to 236, max D value after gain is ~31
+	; ----- Calculate D term ----- (Max value = 32)
+	; D = .015, -128 to 127, Max value @ 127 ~= 37, but limited to 32
+	; max initial value = ~575 if drone is 90 degrees at start and max gyro rate, about 3 rotations per second
+	; *0.288134375
 	ld hl,(rollDerivativeSum)
 	ex de,hl ; now hl = rollError and de = rollDerivSum, don't change de until next "ex de,hl"
 	and a ; reset carry flag
@@ -610,7 +613,6 @@ delay3330cc
 ; ------------------------- Variables -------------------------
 loopCounter: ; Increases by 1 each frame until it reaches 65,535
 	.dw 0
-
 rollReference:
 	.dw 0
 rollAngle:
@@ -621,7 +623,16 @@ rollIntegralHighByte:
 	.db 0
 rollDerivativeSum:
 	.dw 0
-    
+motorThrottles: ; 250 = 100% power (maybe max can go up to 255)
+motor1Throttle:
+	.db 0
+motor2Throttle:
+	.db 0
+motor3Throttle:
+	.db 0
+motor4Throttle:
+	.db 0
+
 asinTable:
 	.dw $0000
 	.dw $0001
@@ -880,30 +891,778 @@ asinTable:
 	.dw $019E
 	.dw $01A9
 
-PgainTable: ; make sure this takes negative numbers into account
-DgainTable: ; also this
+PgainTable:
+	.db $00
+	.db $00
+	.db $00
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0C
+	.db $0C
+	.db $0C
+	.db $0C
+	.db $0C
+	.db $0C
+	.db $0D
+	.db $0D
+	.db $0D
+	.db $0D
+	.db $0D
+	.db $0D
+	.db $0E
+	.db $0E
+	.db $0E
+	.db $0E
+	.db $0E
+	.db $0E
+	.db $0F
+	.db $0F
+	.db $0F
+	.db $0F
+	.db $0F
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F1
+	.db $F1
+	.db $F1
+	.db $F1
+	.db $F1
+	.db $F2
+	.db $F2
+	.db $F2
+	.db $F2
+	.db $F2
+	.db $F2
+	.db $F3
+	.db $F3
+	.db $F3
+	.db $F3
+	.db $F3
+	.db $F3
+	.db $F4
+	.db $F4
+	.db $F4
+	.db $F4
+	.db $F4
+	.db $F4
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $00
+	.db $00
 
-motorThrottles: ; 250 = 100% power (maybe max can go up to 255)
-motor1Throttle:
-	.db 0
-motor2Throttle:
-	.db 0
-motor3Throttle:
-	.db 0
-motor4Throttle:
-	.db 0
+IgainTable:
+	.db $00
+	.db $00
+	.db $00
+	.db $00
+	.db $00
+	.db $00
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $02
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $04
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $06
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $08
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $09
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $00
+	.db $00
+	.db $00
+	.db $00
+	.db $00
+
+DgainTable:
+	.db $00
+	.db $00
+	.db $01
+	.db $01
+	.db $01
+	.db $01
+	.db $02
+	.db $02
+	.db $02
+	.db $03
+	.db $03
+	.db $03
+	.db $03
+	.db $04
+	.db $04
+	.db $04
+	.db $05
+	.db $05
+	.db $05
+	.db $05
+	.db $06
+	.db $06
+	.db $06
+	.db $07
+	.db $07
+	.db $07
+	.db $07
+	.db $08
+	.db $08
+	.db $08
+	.db $09
+	.db $09
+	.db $09
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0A
+	.db $0B
+	.db $0B
+	.db $0B
+	.db $0C
+	.db $0C
+	.db $0C
+	.db $0C
+	.db $0D
+	.db $0D
+	.db $0D
+	.db $0E
+	.db $0E
+	.db $0E
+	.db $0E
+	.db $0F
+	.db $0F
+	.db $0F
+	.db $10
+	.db $10
+	.db $10
+	.db $10
+	.db $11
+	.db $11
+	.db $11
+	.db $12
+	.db $12
+	.db $12
+	.db $12
+	.db $13
+	.db $13
+	.db $13
+	.db $14
+	.db $14
+	.db $14
+	.db $14
+	.db $15
+	.db $15
+	.db $15
+	.db $16
+	.db $16
+	.db $16
+	.db $16
+	.db $17
+	.db $17
+	.db $17
+	.db $18
+	.db $18
+	.db $18
+	.db $18
+	.db $19
+	.db $19
+	.db $19
+	.db $1A
+	.db $1A
+	.db $1A
+	.db $1B
+	.db $1B
+	.db $1B
+	.db $1B
+	.db $1C
+	.db $1C
+	.db $1C
+	.db $1D
+	.db $1D
+	.db $1D
+	.db $1D
+	.db $1E
+	.db $1E
+	.db $1E
+	.db $1F
+	.db $1F
+	.db $1F
+	.db $1F
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $20
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E0
+	.db $E1
+	.db $E1
+	.db $E1
+	.db $E1
+	.db $E2
+	.db $E2
+	.db $E2
+	.db $E3
+	.db $E3
+	.db $E3
+	.db $E3
+	.db $E4
+	.db $E4
+	.db $E4
+	.db $E5
+	.db $E5
+	.db $E5
+	.db $E5
+	.db $E6
+	.db $E6
+	.db $E6
+	.db $E7
+	.db $E7
+	.db $E7
+	.db $E8
+	.db $E8
+	.db $E8
+	.db $E8
+	.db $E9
+	.db $E9
+	.db $E9
+	.db $EA
+	.db $EA
+	.db $EA
+	.db $EA
+	.db $EB
+	.db $EB
+	.db $EB
+	.db $EC
+	.db $EC
+	.db $EC
+	.db $EC
+	.db $ED
+	.db $ED
+	.db $ED
+	.db $EE
+	.db $EE
+	.db $EE
+	.db $EE
+	.db $EF
+	.db $EF
+	.db $EF
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F0
+	.db $F1
+	.db $F1
+	.db $F1
+	.db $F2
+	.db $F2
+	.db $F2
+	.db $F2
+	.db $F3
+	.db $F3
+	.db $F3
+	.db $F4
+	.db $F4
+	.db $F4
+	.db $F4
+	.db $F5
+	.db $F5
+	.db $F5
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F6
+	.db $F7
+	.db $F7
+	.db $F7
+	.db $F8
+	.db $F8
+	.db $F8
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $F9
+	.db $FA
+	.db $FA
+	.db $FA
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FB
+	.db $FC
+	.db $FC
+	.db $FC
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FD
+	.db $FE
+	.db $FE
+	.db $FE
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $FF
+	.db $00
 
 RAMend:
-;import math
-;# 236
-;isum = 0
-;for i in range(0, 200):
-;    i2 = i*577 # i2 is 16 bit signed
-;    out = (i2-isum) # out is 16 bit signed
-;    isum += math.floor(out/2) # use sra to sign extend out/2 from 15 to 16 bits
-;    #print(out*0.0654499341)
-;    print(out)
-
-;import math
-;for i in range(0, 257):
-;    print(".dw $"+format(round(math.asin(i/256)*14667.7196*(5/256)),'#06x')[2:].upper())
