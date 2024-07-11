@@ -87,27 +87,27 @@ mainLoop:
 	
 	; Increase loopCounter once per frame until it reaches 65,535
 	; Then it stays at 65,535
-	ld de,$0001         		;	if (loopCounter < 65,535) {
-	ld hl,(loopCounter)			;		loopCounter++;
-	add hl,de           		;	}
+	ld de,$0001                 ;	if (loopCounter < 65,535) {
+	ld hl,(loopCounter)         ;		loopCounter++;
+	add hl,de                   ;	}
 	jp c, loopCounterAtMax
 	ld (loopCounter),hl
 loopCounterAtMax:
 
 	; Find what test segment we're currently in
 	ld hl,(loopCounter)
-	ld de,-segment4Start		;	if (loopCounter > segment4Start) {
-	add hl,de					;		goto setThrottle0;
-	jp c, setThrottle0			;	}
-	ld hl,(loopCounter)			;	else if (loopCounter > segment3Start) {
-	ld de,-segment3Start		;		goto setThrottleBalance;
-	add hl,de					;	}
-	jp c, setThrottleBalance	;	else if  (loopCounter > segment2Start) {
-	ld hl,(loopCounter)			;		goto setThrottle0;
-	ld de,-segment2Start		;	}
-	add hl,de					;	else {
-	jp c, setThrottle0			;		goto setThrottle100;
-	jp setThrottle100			;	}
+	ld de,-segment4Start        ;	if (loopCounter > segment4Start) {
+	add hl,de                   ;		goto setThrottle0;
+	jp c, setThrottle0          ;	}
+	ld hl,(loopCounter)         ;	else if (loopCounter > segment3Start) {
+	ld de,-segment3Start        ;		goto setThrottleBalance;
+	add hl,de                   ;	}
+	jp c, setThrottleBalance    ;	else if  (loopCounter > segment2Start) {
+	ld hl,(loopCounter)         ;		goto setThrottle0;
+	ld de,-segment2Start        ;	}
+	add hl,de                   ;	else {
+	jp c, setThrottle0          ;		goto setThrottle100;
+	jp setThrottle100           ;	}
 	
 	; Set all 4 motors to min throttle (cuts motors off)
 setThrottle0:
