@@ -123,19 +123,19 @@ setThrottleBalance:
 	call getSensorData
 	call calculateOrientation
 
-	ex de,hl					;	rollError = rollReference - rollAngle
+	ex de,hl                    ;	rollError = rollReference - rollAngle
 	ld hl,(rollReference)
 	and a ; reset carry flag
 	sbc hl,de
 
 	call calculatePID
 	
-	ld e, hoverThrottle			;	motor1Throttle = motor2Throttle = hoverThrottle + rollCommand
-	add a,e						;	motor3Throttle = motor4Throttle = hoverThrottle - rollCommand
+	ld e, hoverThrottle         ;	motor1Throttle = motor2Throttle = hoverThrottle + rollCommand
+	add a,e                     ;	motor3Throttle = motor4Throttle = hoverThrottle - rollCommand
 	call checkThrottleLimit
-	ld (motor1Throttle),a		;	if (motor1Throttle >= throttleLimit || motor2Throttle >= throttleLimit) {
-	ld (motor2Throttle),a		;		handleError();
-	sub e						;	}
+	ld (motor1Throttle),a       ;	if (motor1Throttle >= throttleLimit || motor2Throttle >= throttleLimit) {
+	ld (motor2Throttle),a       ;		handleError();
+	sub e                       ;	}
 	neg
 	add a,e
 	call checkThrottleLimit
@@ -289,10 +289,10 @@ delayLoop:
 ; Get accelerometer and gyroscope data from IMU (MPU-9250).
 
 ; Registers:
-; BC		= Y acceleration (output)
-; E			= X angular rate (output)
-; A, F, D	= Destroyed
-; H, L		= Unaffected
+; BC        = Y acceleration (output)
+; E         = X angular rate (output)
+; A, F, D   = Destroyed
+; H, L      = Unaffected
 getSensorData:
 	ld d,xGyroAddress + $80 ; bit 7 of IMU address means we're reading
 	call readDataSPI8Bit ; read 8 bits from gyro
@@ -310,10 +310,10 @@ getSensorData:
 ; Reads 8 bits of data from an SPI device.
 
 ; Registers:
-; D			= Address (input)
-; C			= Data (output)
-; A, F, B	= Destroyed
-; E, H, L	= Unaffected
+; D         = Address (input)
+; C         = Data (output)
+; A, F, B   = Destroyed
+; E, H, L   = Unaffected
 readDataSPI8Bit:
 	; Output: bit 3 = SCL, bit 2 = MOSI, bit 1 = NCS, bit 0 = MISO
 	ld a,$0A
@@ -351,10 +351,10 @@ receiveLoop: ; Value read is stored in register c
 ; already been set and the first 8 bits retrieved.
 
 ; Registers:
-; C				= data (input)
-; BC			= data (output)
-; A, F			= Destroyed
-; D, E, H, L	= Unaffected
+; C             = data (input)
+; BC            = data (output)
+; A, F          = Destroyed
+; D, E, H, L    = Unaffected
 readDataSPI2Bit:
 	xor a
 	ld b,a
@@ -381,10 +381,10 @@ readDataSPI2Bit:
 ; the roll angle of the drone
 
 ; Registers:
-; BC		= Y acceleration (input)
-; E			= X angular rate (input)
-; HL		= Roll Angle (output)
-; A, F, D	= Destroyed
+; BC        = Y acceleration (input)
+; E         = X angular rate (input)
+; HL        = Roll Angle (output)
+; A, F, D   = Destroyed
 calculateOrientation:
 	; I used a complementary filter for the gyroscope and accelerometer modeled after the one
 	; in this video by Brian Douglas: https://www.youtube.com/watch?v=whSw42XddsU
@@ -400,9 +400,9 @@ calculateOrientation:
 	; of 1 degree/sec rotation returns a roll angle value of 256. Since the gyro roll angle estimation
 	; (rollAngleGyro) is a 16 bit signed int, it can store an angle from ~ -128 to 128 degrees.
 	ld hl, (rollAngle)
-	ld a,e					;	rollAngleGyro = rollAngle + xGyro
+	ld a,e                      ;	rollAngleGyro = rollAngle + xGyro
 	add a,a
-	sbc a,a		; sign extend e into de, then add de to hl
+	sbc a,a ; sign extend e into de, then add de to hl
 	ld d,a
 	add hl,de	
 	
@@ -419,26 +419,26 @@ calculateOrientation:
 	
 	; First, hl*5 is loaded into the 24 bit register group "cde"
 	push bc	; save Y acceleration
-	ld bc, 0					;	if (hl >= 0) {	// This is necessary to make the operation work with negative roll angles
-	bit 7,h						;		bc = $0000
-	jp z, HLpositive			;	else {
-	dec bc						;		bc = $FFFF
-HLpositive:						;	}
-	ld d,h		; load hl into cde, then left bitshift twice to multiply by 4
+	ld bc, 0                    ;	if (hl >= 0) {	// This is necessary to make the operation work with negative roll angles
+	bit 7,h                     ;		bc = $0000
+	jp z, HLpositive            ;	else {
+	dec bc                      ;		bc = $FFFF
+HLpositive:                     ;	}
+	ld d,h      ; load hl into cde, then left bitshift twice to multiply by 4
 	ld e,l
-	sla e		; bitshift 1
+	sla e       ; bitshift 1
 	rl d
 	rl c
-	sla e		; bitshift 2
+	sla e       ; bitshift 2
 	rl d
 	rl c
-	ld a,e		; add hl to cde once more to make cde = hl*5
-	add a,l		; ^add l and e
+	ld a,e      ; add hl to cde once more to make cde = hl*5
+	add a,l     ; ^add l and e
 	ld e,a
-	ld a,d		; add h and d
+	ld a,d      ; add h and d
 	adc a,h
 	ld d,a
-	ld a,c		; add b and c (register b is used so negative hl values work)
+	ld a,c      ; add b and c (register b is used so negative hl values work)
 	adc a,b
 	ld c,a
 	; Then, the "cde" register group is subtracted from the "hl0" register group (which is hl*256) to get
@@ -516,9 +516,9 @@ addRollEstimates:
 ; as an input. A low pass filter is used on the derivative term.
 
 ; Registers:
-; HL			= Roll Error (input)
-; A				= Roll Command (output)
-; BC, DE, F		= Destroyed
+; HL            = Roll Error (input)
+; A             = Roll Command (output)
+; BC, DE, F     = Destroyed
 
 	; ----- Calculate P term ----- (Max value ~= 16)
 	; P gain = .04, input is always from -90 to 90
@@ -531,7 +531,7 @@ addRollEstimates:
 	ld c,d
 	add hl,bc
 	ld a,(hl)
-	ld ixl,a					;	rollCommand = Pterm
+	ld ixl,a                    ;	rollCommand = Pterm
 
 	; ----- Calculate I term ----- (Max value ~= 12)
 	; I gain = .01, input from -128 to 127
@@ -568,7 +568,7 @@ rollIntInRange:
 	ld a,(hl)
 	ld b,ixl
 	add a,b
-	ld b,a						;	rollCommand += Iterm
+	ld b,a                      ;	rollCommand += Iterm
 	
 	; ----- Calculate D term ----- (Max value = 32)
 	; D gain = .015, input from -128 to 127, Max value @ 127 ~= 37, but limited to 32
@@ -615,8 +615,8 @@ rollDerivInRange:
 ; stops the program and flashes the LED.
 
 ; Registers:
-; A				= Throttle (input)
-; All Others	= Unaffected (unless handleError is called)
+; A             = Throttle (input)
+; All Others    = Unaffected (unless handleError is called)
 
 checkThrottleLimit:
 	cp throttleLimit
