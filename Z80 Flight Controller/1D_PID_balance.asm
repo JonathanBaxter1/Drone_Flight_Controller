@@ -472,7 +472,7 @@ HLpositive:                     ;	}
 	jp z, rollAccPositiveMax ; 1g
 	cp 3
 	jp z, rollAccNegative ; -1g to 0g
- rollAccNegativeMax: ; -1g
+rollAccNegativeMax: ; -1g
 	ld hl, $FE3E ; -90 degrees
 	jp addRollEstimates
 rollAccPositiveMax:
