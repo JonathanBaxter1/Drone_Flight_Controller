@@ -1,5 +1,9 @@
 import math
 
+Pgain = 0.04 # Are these right?
+Igain = 0.01
+Dgain = 0.015
+
 def int2byte(number):
     return ".db $"+format(int(number) & 0xFF,'#04x')[2:].upper()
 
@@ -8,7 +12,7 @@ for i in range(0, 256):
         number = i
     else:
         number = i-256
-    
+
     Pnumber = number
     if number > 90:
         Pnumber = 90
